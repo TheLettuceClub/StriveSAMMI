@@ -3,16 +3,12 @@
 #include <cpr/cpr.h>
 #include <Mod/CppUserModBase.hpp>
 #include <SigScanner/SinglePassSigScanner.hpp>
-// #include "struct_util.h"
 #include <UnrealDef.hpp>
 #include <UObjectGlobals.hpp>
 #include "safetyhook.hpp"
 #include <AGameModeBase.hpp>
-#include <LuaMadeSimple/LuaMadeSimple.hpp>
 #include "json.hpp"
 #include "manual_retype.h"
-// #define WIN32_LEAN_AND_MEAN
-// #include "Windows.h"
 // Mod
 
 using json = nlohmann::json;

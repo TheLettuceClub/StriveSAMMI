@@ -1,0 +1,47 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${default}",
+                "${workspaceFolder}/GGSTSammi/include/**",
+                "${workspaceFolder}/RE-UE4SS/UE4SS/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/ArgsParser/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/ASMHelper/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/Constructs/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/DynamicOutput/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/File/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/Function/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/Helpers/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/IniParser/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/Input/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/JSON/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/LuaMadeSimple/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/LuaRaw/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/MProgram/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/ParserBase/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/ScopedTimer/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/SinglePassSigScanner/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/String/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/Unreal/include/**",
+                "${workspaceFolder}/RE-UE4SS/deps/first/Unreal/generated_include/**",
+                "C:/Users/Gamer/AppData/Local/.xmake/packages/**",
+                "${workspaceFolder}/GGSTSammi/cpr/include/**",
+                "${workspaceFolder}/Intermediates/.packages/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "UBT_COMPILED_PLATFORM=Win64",
+                "OVERRIDE_PLATFORM_HEADER_NAME=Windows"
+            ],
+            "windowsSdkVersion": "10.0.22621.0",
+            "compilerPath": "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.41.34120/bin/Hostx64/x64/cl.exe",
+            "cStandard": "c23",
+            "cppStandard": "c++23",
+            "intelliSenseMode": "windows-msvc-x64"
+        }
+    ],
+    "version": 4
+}
