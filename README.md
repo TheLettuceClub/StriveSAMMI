@@ -1,7 +1,1 @@
-# UE4SSMods
-
-My collection of mods made in UE4SS.
-
-Build instructions can be found at [the main UE4SS repo](https://github.com/UE4SS-RE/RE-UE4SS).
-
-Both StriveFrameData-dll.rar and StriveFrameData-pak.rar are necessary to use this mod. To install the dll mod, extract into (steam folder)\GUILTY GEAR STRIVE\RED\Binaries\Win64. The pak mod may be installed as a normal mod into ~mods or with Unverum.
+SAMMI support in Guilty Gear Strive. Based on code given to me by Wistful-Hopes, based spiritually on super-continent's ggxrd-mod, and using offsets in Artemis' Strive Cheat Table.

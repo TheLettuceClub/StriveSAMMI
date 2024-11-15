@@ -1,0 +1,7 @@
+Stuff to do:
+put this on github somehow
+add objectcreated support
+add projectile support
+figure out how RISC counters can be detected
+find the timer and timelimit
+decode the invuln and cancel bit-fields from their short interpretations

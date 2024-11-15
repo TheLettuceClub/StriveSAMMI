@@ -1,0 +1,8 @@
+nu ch type bytes
+vsmall: ???????
+small: 1c fd
+mid: fc f5
+or: cc f7 (p2?????)
+mid2 (for 5d): bc 92
+large: a4 f9
+or: 5c fb

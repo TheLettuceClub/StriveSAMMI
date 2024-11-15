@@ -1,0 +1,728 @@
+#define NOMINMAX
+
+#include <cpr/cpr.h>
+#include <Mod/CppUserModBase.hpp>
+#include "SigScanner/SinglePassSigScanner.hpp"
+#include "struct_util.h"
+#include "UnrealDef.hpp"
+#include "UObjectGlobals.hpp"
+#include "safetyhook.hpp"
+#include "AGameModeBase.hpp"
+#include "LuaMadeSimple/LuaMadeSimple.hpp"
+#include <nlohmann/json.hpp>
+
+// Mod
+
+using json = nlohmann::json;
+
+enum RECFLG_ENUM : Unreal::uint16
+{
+    RECFLG_TENKEY_MASK = 0xF,
+    RECFLG_flgU = 0x1,
+    RECFLG_flgD = 0x2,
+    RECFLG_flgL = 0x4,
+    RECFLG_flgR = 0x8,
+    RECFLG_1 = 0x6,
+    RECFLG_2 = 0x2,
+    RECFLG_3 = 0xA,
+    RECFLG_4 = 0x4,
+    RECFLG_5 = 0x0,
+    RECFLG_6 = 0x8,
+    RECFLG_7 = 0x5,
+    RECFLG_8 = 0x1,
+    RECFLG_9 = 0x9,
+    RECFLG_A = 0x10,
+    RECFLG_B = 0x20,
+    RECFLG_C = 0x40,
+    RECFLG_D = 0x80,
+    RECFLG_E = 0x100,
+    RECFLG_F = 0x200,
+    RECFLG_G = 0x400,
+    RECFLG_H = 0x800,
+    RECFLG_I = 0x1000,
+    RECFLG_J = 0x2000,
+    RECFLG_K = 0x4000,
+    RECFLG_SP_NET = 0x8000,
+};
+
+enum PAD_ID : Unreal::uint8
+{
+    PAD_ID_BEGIN = 0x0,
+    PAD_ID_1CON = 0x0,
+    PAD_ID_2CON = 0x1,
+    PAD_ID_3CON = 0x2,
+    PAD_ID_4CON = 0x3,
+    PAD_ID_MAX = 0x4,
+    PAD_ID_CPU = 0x4,
+    PAD_ID_MAX_WITH_CPU = 0x5,
+    PAD_ID_ANY = 0x6,
+    PAD_ID_INVALID = 0x7,
+};
+
+class UREDGameCommon : public UObject
+{
+public:
+    FIELD(0x2F3, PAD_ID, m_MainQuadrant);
+};
+
+UREDGameCommon* GameCommon;
+
+template <int Length>
+class CXXBYTE
+{
+public:
+    char m_Buf[Length];
+};
+
+enum CHT_PROCESS : Unreal::uint8
+{
+    CHT_S = 0x0,
+    CHT_M = 0x1,
+    CHT_L = 0x2,
+    CHT_RISC = 0x3,
+};
+
+class CAtkParam
+{
+    Unreal::uint8 pad[0x3F8];
+
+public:
+    FIELD(0x4, Unreal::int32, m_AtkLevel);
+    FIELD(0x3C3, CHT_PROCESS, m_AtkCounterHitProcess);
+};
+
+enum HIT_TYPE
+{
+    HITTYPE_MISS = 0x0000,
+    HITTYPE_DAMAGE = 0x0001,
+    HITTYPE_GUARD = 0x0002,
+    HITTYPE_DODGE = 0x0003,
+    HITTYPE_ARMOR = 0x0004,
+    HITTYPE_BOSSARMOR = 0x0005,
+    HITTYPE_PARRY = 0x0006,
+};
+
+class OBJ_CBase
+{
+public:
+    FIELD(0x398, Unreal::uint32, m_CollisionFlag);
+    FIELD(0xC70, OBJ_CBase*, m_pAttackMaster);
+    FIELD(0xC90, CAtkParam, m_DmgParam);
+    FIELD(0x114C, HIT_TYPE, m_DmgHitType);
+    FIELD(0x1158, Unreal::uint32, m_bIsCounterHit);
+    FIELD(0x119C, Unreal::int32, m_HitPoint);
+    FIELD(0x3740, CXXBYTE<32>, m_CurActionName);
+};
+
+enum PLAYER_ENABLE_FLAG : uint32_t
+{
+    ENABLE_STANDING = 0x1,
+    ENABLE_CROUCHING = 0x2,
+    ENABLE_FORWARDWALK = 0x4,
+    ENABLE_FORWARDDASH = 0x8,
+    ENABLE_FORWARDCROUCHWALK = 0x10,
+    ENABLE_BACKWALK = 0x20,
+    ENABLE_BACKDASH = 0x40,
+    ENABLE_BACKCROUCHWALK = 0x80,
+    ENABLE_JUMP = 0x100,
+    ENABLE_BARRIER_CANCEL = 0x200,
+    ENABLE_AIRJUMP = 0x400,
+    ENABLE_AIRFORWARDDASH = 0x800,
+    ENABLE_NORMALATTACK = 0x1000,
+    ENABLE_SPECIALATTACK = 0x2000,
+    ENABLE_STANDTURN = 0x4000,
+    ENABLE_DEAD = 0x8000,
+    ENABLE_GUARD = 0x10000,
+    ENABLE_AIRBACKDASH = 0x40000,
+    ENABLE_CROUCHTURN = 0x80000,
+    ENABLE_AIRTURN = 0x200000,
+    ENABLE_ROMANCANCEL = 0x800000,
+    ENABLE_NAMA_FAULT = 0x1000000,
+    ENABLE_BARRIER = 0x2000000,
+    ENABLE_LOCKREJECT = 0x4000000,
+    ENABLE_AUTOLOCKREJECT = 0x8000000,
+    ENABLE_DEMO = 0x10000000,
+    ENABLE_PRE_GUARD = 0x20000000,
+    ENABLE_AUTO_GUARD = 0x40000000,
+    ENABLE_BURST = 0x80000000,
+};
+
+class OBJ_CCharBase : public OBJ_CBase
+{
+public:
+    FIELD(0x6140, uint32_t, m_EnableFlag);
+    FIELD(0xC8BC, int32_t, m_GuardBalance);
+    FIELD(0xF784, CXXBYTE<16>, m_CharName);
+};
+
+class BATTLE_TeamManager
+{
+    Unreal::uint8 padding[352]{};
+
+public:
+    FIELD(0x8, OBJ_CCharBase*, m_pMainPlayerObject);
+    FIELD(0x48, Unreal::int32, m_TensionVal);
+    FIELD(0x4C, Unreal::int32, m_BurstStock);
+    FIELD(0x144, Unreal::int32, m_TensionBalance);
+};
+
+class BATTLE_CObjectManager
+{
+public:
+    BATTLE_TeamManager m_TeamManager[2];
+};
+
+class RoundTimer
+{
+public:
+    int m_FrameTimeMax;
+    int m_CurrentFrameTime;
+    unsigned int m_TimeStep;
+    bool m_Started;
+    bool m_Pause;
+    bool m_Infinity;
+    bool m_forcePause;
+};
+
+class BattleState
+{
+public:
+    FIELD(0x8, RoundTimer, m_Timer);
+};
+
+class AREDGameState_Battle : public AActor
+{
+public:
+    FIELD(0xBB0, BATTLE_CObjectManager*, BattleObjectManager);
+    FIELD(0xBC8, BattleState*, State);
+};
+
+AREDGameState_Battle* GameState;
+
+enum GAMEKEY_FLAG
+{
+    GKF_NULL = 0x0,
+    GKF_UP = 0x1,
+    GKF_U = 0x1,
+    GKF_RIGHT = 0x2,
+    GKF_R = 0x2,
+    GKF_UR = 0x3,
+    GKF_DOWN = 0x4,
+    GKF_STK_DMASK = 0x4,
+    GKF_D = 0x4,
+    GKF_RD = 0x6,
+    GKF_LEFT = 0x8,
+    GKF_L = 0x8,
+    GKF_LU = 0x9,
+    GKF_STK_LRMASK = 0xA,
+    GKF_DL = 0xC,
+    GKF_STK_MASK = 0xF,
+    GKF_LSTICK_UP = 0x10,
+    GKF_LSTICK_RIGHT = 0x20,
+    GKF_LSTICK_DOWN = 0x40,
+    GKF_LSTICK_LEFT = 0x80,
+    GKF_RSTICK_UP = 0x100,
+    GKF_RSTICK_RIGHT = 0x200,
+    GKF_RSTICK_DOWN = 0x400,
+    GKF_RSTICK_LEFT = 0x800,
+    GKF_X = 0x1000,
+    GKF_Y = 0x2000,
+    GKF_A = 0x4000,
+    GKF_B = 0x8000,
+    GKF_R1 = 0x10000,
+    GKF_R2 = 0x20000,
+    GKF_L1 = 0x40000,
+    GKF_L2 = 0x80000,
+    GKF_L3 = 0x100000,
+    GKF_R3 = 0x200000,
+    GKF_START = 0x400000,
+    GKF_SELECT = 0x800000,
+    GKF_SWALL = 0xFFF000,
+};
+
+enum ObjectID
+{
+    OBJ_Player1,
+    OBJ_Player2,
+    OBJ_Projectile,
+};
+
+struct SammiState
+{
+    struct PlayerState
+    {
+        std::string charaName{};
+        Unreal::int32 health{};
+        Unreal::int32 tension{};
+        Unreal::int32 tensionBalance{};
+        Unreal::int32 burst{};
+        Unreal::int32 risc{};
+        std::string action{};
+        Unreal::uint32 roundWins{};
+    };
+
+    ObjectID PlayerSide{};
+    Unreal::int32 roundTimeLimit{};
+    Unreal::int32 roundTimeLeft{};
+    PlayerState p1{};
+    PlayerState p2{};
+};
+
+NLOHMANN_JSON_SERIALIZE_ENUM(ObjectID, {
+                             {OBJ_Player1, "Player1"},
+                             {OBJ_Player2, "Player2"},
+                             {OBJ_Projectile, "Projectile"},
+                             })
+
+struct HitInfo
+{
+    enum HitType
+    {
+        HIT_Normal,
+        HIT_SmallCounter,
+        HIT_MediumCounter,
+        HIT_LargeCounter,
+        HIT_RISCCounter,
+    };
+
+    HitType type{};
+    Unreal::int32 attackLevel{};
+    ObjectID attacker{};
+    ObjectID defender{};
+    std::string attackerAction{};
+    std::string defenderPrevAction{};
+};
+
+NLOHMANN_JSON_SERIALIZE_ENUM(HitInfo::HitType, {
+                             {HitInfo::HIT_Normal, "Normal"},
+                             {HitInfo::HIT_SmallCounter, "SmallCounter"},
+                             {HitInfo::HIT_MediumCounter, "MediumCounter"},
+                             {HitInfo::HIT_LargeCounter, "LargeCounter"},
+                             {HitInfo::HIT_RISCCounter, "RISCCounter"},
+                             })
+
+struct ObjectCreatedInfo
+{
+    std::string objName{};
+    ObjectID parent{};
+    std::string p1Action{};
+    std::string p2Action{};
+};
+
+struct RoundEndInfo
+{
+    enum WinType
+    {
+        WIN_Player1,
+        WIN_Player2,
+        WIN_Draw,
+    };
+
+    enum RoundEndCause
+    {
+        RE_KO,
+        RE_TimeOut,
+    };
+
+    WinType type{};
+    RoundEndCause cause{};
+};
+
+NLOHMANN_JSON_SERIALIZE_ENUM(RoundEndInfo::WinType, {
+                             {RoundEndInfo::WIN_Player1, "Player1"},
+                             {RoundEndInfo::WIN_Player2, "Player2"},
+                             {RoundEndInfo::WIN_Draw, "Draw"},
+                             })
+
+NLOHMANN_JSON_SERIALIZE_ENUM(RoundEndInfo::RoundEndCause, {
+                             {RoundEndInfo::RE_KO, "KO"},
+                             {RoundEndInfo::RE_TimeOut, "TimeOut"},
+                             })
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SammiState::PlayerState, health, tension, tensionBalance, burst, risc, action,
+                                   roundWins)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SammiState, PlayerSide, roundTimeLimit, roundTimeLeft, p1, p2)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(HitInfo, type, attackLevel, attacker, defender, attackerAction, defenderPrevAction)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ObjectCreatedInfo, objName, parent, p1Action, p2Action)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(RoundEndInfo, type, cause)
+
+enum SammiMessageType
+{
+    MSG_UpdateState,
+    MSG_Hit,
+    MSG_ObjectCreated,
+    MSG_RoundStart,
+    MSG_RoundEnd,
+};
+
+SammiState updateMessage;
+
+class SammiConfig
+{
+    SammiConfig() = default;
+
+public:
+    bool bEnabled{};
+    std::string webhookUrl = "http://127.0.0.1:9450/webhook";
+    int stateUpdateMs = 1000 / 25;
+    int timeoutMs = 0;
+
+    static SammiConfig* GetInstance()
+    {
+        static SammiConfig instance;
+        return &instance;
+    }
+};
+
+auto sendEvent(std::string eventName, std::string customData, int timeout)
+{
+    auto body = std::format("{{'trigger': '{}', 'eventInfo': {}}}", eventName, customData);
+    cpr::Response r = cpr::Post(cpr::Url{SammiConfig::GetInstance()->webhookUrl},
+                                cpr::Body{body},
+                                cpr::Timeout{std::chrono::milliseconds(timeout)});
+};
+
+bool bIsBattle = false;
+
+void MessageHandler()
+{
+    auto config = SammiConfig::GetInstance();
+
+    while (true)
+    {
+        if (bIsBattle)
+        {
+            json j = updateMessage;
+            sendEvent("ggst_stateUpdate", j.dump(), abs(config->timeoutMs));
+			Output::send<LogLevel::Verbose>(STR("StriveSAMMI: sent stateUpdate\n"));
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(config->stateUpdateMs));
+    }
+}
+
+Function<int(PAD_ID)> Pad2Side;
+
+SafetyHookInline UpdateBattleSub_Detour{};
+
+SammiState prevState{};
+Unreal::uint32 prevHitP1{};
+Unreal::uint32 prevHitP2{};
+bool bRoundOver{};
+
+void UpdateBattleSub_Hook(AREDGameState_Battle* pThis, float DeltaSeconds, bool bUpdateDraw)
+{
+	Output::send<LogLevel::Verbose>(STR("StriveSAMMI: update_battle_sub happening\n"));
+    UpdateBattleSub_Detour.call(pThis, DeltaSeconds, bUpdateDraw);
+
+    if (!bUpdateDraw) return;
+
+    auto newState = SammiState();
+    
+    if (Pad2Side(GameCommon->m_MainQuadrant) == 0) newState.PlayerSide = OBJ_Player1;
+    else newState.PlayerSide = OBJ_Player2;
+    
+    newState.roundTimeLimit = pThis->State->m_Timer.m_FrameTimeMax;
+    newState.roundTimeLeft = pThis->State->m_Timer.m_FrameTimeMax - pThis->State->m_Timer.m_CurrentFrameTime;
+
+    auto p1 = pThis->BattleObjectManager->m_TeamManager[0].m_pMainPlayerObject;
+    auto p2 = pThis->BattleObjectManager->m_TeamManager[1].m_pMainPlayerObject;
+
+    newState.p1.charaName = p1->m_CharName.m_Buf;
+    newState.p2.charaName = p2->m_CharName.m_Buf;
+
+    newState.p1.health = p1->m_HitPoint;
+    newState.p2.health = p2->m_HitPoint;
+
+    newState.p1.tension = pThis->BattleObjectManager->m_TeamManager[0].m_TensionVal;
+    newState.p2.tension = pThis->BattleObjectManager->m_TeamManager[1].m_TensionVal;
+
+    newState.p1.tensionBalance = pThis->BattleObjectManager->m_TeamManager[0].m_TensionBalance;
+    newState.p2.tensionBalance = pThis->BattleObjectManager->m_TeamManager[1].m_TensionBalance;
+
+    newState.p1.burst = pThis->BattleObjectManager->m_TeamManager[0].m_BurstStock;
+    newState.p2.burst = pThis->BattleObjectManager->m_TeamManager[1].m_BurstStock;
+
+    newState.p1.risc = p1->m_GuardBalance;
+    newState.p2.risc = p2->m_GuardBalance;
+
+    newState.p1.action = p1->m_CurActionName.m_Buf;
+    newState.p2.action = p2->m_CurActionName.m_Buf;
+
+    updateMessage = newState;
+    
+    if (!bRoundOver && (newState.roundTimeLeft == 0 || newState.p1.health <= 0 || newState.p2.health <= 0))
+    {
+        bRoundOver = true;
+
+        RoundEndInfo roundEnd;
+
+        if (newState.p2.health > newState.p1.health)
+            if (newState.p1.health > newState.p2.health)
+                roundEnd.type = RoundEndInfo::WIN_Player1;
+            else
+                roundEnd.type = RoundEndInfo::WIN_Player2;
+        else if (newState.p1.health > newState.p2.health)
+            roundEnd.type = RoundEndInfo::WIN_Player1;
+        else
+            roundEnd.type = RoundEndInfo::WIN_Draw;
+
+        roundEnd.cause = newState.roundTimeLeft == 0 ? RoundEndInfo::RE_TimeOut : RoundEndInfo::RE_KO;
+
+        json j = roundEnd;
+        std::thread(sendEvent, "ggst_roundEndEvent", j.dump(), abs(SammiConfig::GetInstance()->timeoutMs)).detach();
+		Output::send<LogLevel::Verbose>(STR("StriveSAMMI: sent roundEndEvent\n"));
+    }
+
+    prevState = newState;
+}
+
+SafetyHookInline RoundInit_Detour{};
+
+void RoundInit_Hook(BATTLE_CObjectManager* pThis, bool use2ndInitialize)
+{
+	Output::send<LogLevel::Verbose>(STR("StriveSAMMI: roundinit happening\n"));
+    RoundInit_Detour.call(pThis, use2ndInitialize);
+
+    bRoundOver = false;
+
+    std::thread(sendEvent, "ggst_roundStartEvent", "{}", abs(SammiConfig::GetInstance()->timeoutMs)).detach();
+	Output::send<LogLevel::Verbose>(STR("StriveSAMMI: sent roundStartEvent\n"));
+}
+
+SafetyHookInline CreateObjectArg_Detour{};
+
+std::thread objCreateThread;
+
+void CreateObjectArg_Hook(OBJ_CBase* pThis, const CXXBYTE<32>& actName, int exPoint)
+{
+	Output::send<LogLevel::Verbose>(STR("StriveSAMMI: CreateObjectArg happening\n"));
+    CreateObjectArg_Detour.call(pThis, actName, exPoint);
+
+    auto p1 = GameState->BattleObjectManager->m_TeamManager[0].m_pMainPlayerObject;
+    auto p2 = GameState->BattleObjectManager->m_TeamManager[1].m_pMainPlayerObject;
+
+    auto objCreate = ObjectCreatedInfo();
+
+    objCreate.objName = actName.m_Buf;
+    objCreate.parent = pThis == p1 ? OBJ_Player1 : pThis == p2 ? OBJ_Player2 : OBJ_Projectile;
+    objCreate.p1Action = p1->m_CurActionName.m_Buf;
+    objCreate.p2Action = p2->m_CurActionName.m_Buf;
+    
+    json j = objCreate;
+    std::thread(sendEvent, "ggst_objectCreatedEvent", j.dump(), abs(SammiConfig::GetInstance()->timeoutMs)).detach();
+	Output::send<LogLevel::Verbose>(STR("StriveSAMMI: sent objectCreated\n"));
+}
+
+SafetyHookInline ExecuteAttackHit_Detour;
+
+Unreal::uint8 ExecuteAttackHit_Hook(OBJ_CBase* pThis, OBJ_CCharBase* dmObj, bool isSpGuardCollision, bool isTransfer)
+{
+	Output::send<LogLevel::Verbose>(STR("StriveSAMMI: executeattck_hit happening\n"));
+    auto newHit = HitInfo();
+    newHit.defenderPrevAction = dmObj->m_CurActionName.m_Buf;
+    
+    const auto retVal = ExecuteAttackHit_Detour.call<Unreal::uint8>(pThis, dmObj, isSpGuardCollision, isTransfer);
+
+    if (dmObj->m_DmgHitType != HITTYPE_DAMAGE) return retVal;
+
+    newHit.type = HitInfo::HIT_Normal;
+
+    if (dmObj->m_bIsCounterHit)
+    {
+        switch (dmObj->m_DmgParam.m_AtkCounterHitProcess)
+        {
+        case CHT_S:
+            newHit.type = HitInfo::HIT_SmallCounter;
+            break;
+        case CHT_M:
+            newHit.type = HitInfo::HIT_MediumCounter;
+            break;
+        case CHT_L:
+            newHit.type = HitInfo::HIT_LargeCounter;
+            break;
+        case CHT_RISC:
+            newHit.type = HitInfo::HIT_RISCCounter;
+            break;
+        }
+    }
+    newHit.attackLevel = dmObj->m_DmgParam.m_AtkLevel;
+
+    newHit.attackerAction = dmObj->m_pAttackMaster->m_CurActionName.m_Buf;
+
+    auto p1 = GameState->BattleObjectManager->m_TeamManager[0].m_pMainPlayerObject;
+    auto p2 = GameState->BattleObjectManager->m_TeamManager[1].m_pMainPlayerObject;
+
+    if (dmObj->m_pAttackMaster == p2)
+    {
+        newHit.attacker = OBJ_Player2;
+    }
+    else if (dmObj->m_pAttackMaster == p1)
+    {
+        newHit.attacker = OBJ_Player1;
+    }
+    else if (dmObj->m_pAttackMaster != nullptr)
+    {
+        newHit.attacker = OBJ_Projectile;
+    }
+
+    newHit.defender = dmObj == p1 ? OBJ_Player1 : OBJ_Player2;
+
+    json j = newHit;
+    std::thread(sendEvent, "ggst_hitEvent", j.dump(), abs(SammiConfig::GetInstance()->timeoutMs)).detach();
+    Output::send<LogLevel::Verbose>(STR("StriveSAMMI: sent hitEvent\n"));
+    return retVal;
+}
+
+class GGSTSammi : public CppUserModBase
+{
+public:
+    std::thread messageHandler;
+
+    GGSTSammi()
+    {
+        ModName = STR("GGSTSammi");
+        ModVersion = STR("1.0");
+        ModDescription = STR("Sammi integration for GGST");
+        ModAuthors = STR("WistfulHopes");
+        // Do not change this unless you want to target a UE4SS version
+        // other than the one you're currently building with somehow.
+        //ModIntendedSDKVersion = STR("2.6");
+		Output::send<LogLevel::Verbose>(STR("StriveSAMMI Started\n"));
+    }
+
+    ~GGSTSammi() override = default;
+
+    auto on_update() -> void override
+    {
+        if (!GameCommon)
+        {
+			Output::send<LogLevel::Verbose>(STR("StriveSAMMI: didn't find a game common, searching\n"));
+            std::vector<UObject*> out{};
+
+            UObjectGlobals::FindAllOf(STR("REDGameCommon"), out);
+
+            if (!out.empty()) GameCommon = (UREDGameCommon*)out[0];
+        }
+    }
+
+    auto on_unreal_init() -> void override
+    {
+		Output::send<LogLevel::Verbose>(STR("StriveSAMMI: Unreal Started\n"));
+        messageHandler = std::thread(MessageHandler);
+
+        Unreal::Hook::RegisterInitGameStatePreCallback([&](Unreal::AGameModeBase* Context)
+        {
+            bIsBattle = false;
+            const auto Class = Unreal::UObjectGlobals::StaticFindObject<UClass*>(
+                nullptr, nullptr, to_wstring("/Script/RED.REDGameMode_Battle"));
+
+            if (Context->IsA(Class))
+            {
+                GameState = static_cast<AREDGameState_Battle*>(UObjectGlobals::FindFirstOf(
+                    FName(STR("REDGameState_Battle"))));
+                bIsBattle = true;
+				Output::send<LogLevel::Verbose>(STR("StriveSAMMI: found the gamestate_battle\n"));
+            }
+        });
+
+        const SignatureContainer update_battle_sub{
+            {{"48 8B C4 48 89 58 ? 41 56 48 81 EC ? ? ? ? 48 89 68"}},
+            [&](const SignatureContainer& self)
+            {
+                UpdateBattleSub_Detour = safetyhook::create_inline(self.get_match_address(), UpdateBattleSub_Hook);
+				Output::send<LogLevel::Verbose>(STR("StriveSAMMI: update_battle_sub happy\n"));
+                return true;
+            },
+            [](SignatureContainer& self)
+            {
+            },
+        };
+
+        const SignatureContainer round_initialize{
+            {
+                {
+                    "48 8B C4 48 89 58 ? 48 89 70 ? 48 89 78 ? 55 41 54 41 55 41 56 41 57 48 8D 68 ? 48 81 EC ? ? ? ? 0F 29 70 ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 45 ? 45 33 ED"
+                }
+            },
+            [&](const SignatureContainer& self)
+            {
+                RoundInit_Detour = safetyhook::create_inline(self.get_match_address(), RoundInit_Hook);
+				Output::send<LogLevel::Verbose>(STR("StriveSAMMI: round_init happy\n"));
+                return true;
+            },
+            [](SignatureContainer& self)
+            {
+            },
+        };
+
+        const SignatureContainer create_object_arg{
+            {{"48 89 5C 24 ? 48 89 74 24 ? 57 48 83 EC ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 44 24 ? 80 3A"}},
+            [&](const SignatureContainer& self)
+            {
+                CreateObjectArg_Detour = safetyhook::create_inline(self.get_match_address(), CreateObjectArg_Hook);
+				Output::send<LogLevel::Verbose>(STR("StriveSAMMI: create_object_arg happy\n"));
+                return true;
+            },
+            [](SignatureContainer& self)
+            {
+            },
+        };
+
+        const SignatureContainer execute_attack_hit{
+            {
+                {
+                    "48 89 5C 24 ? 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ? ? ? ? 48 81 EC ? ? ? ? 48 8B 05 ? ? ? ? 48 33 C4 48 89 85 ? ? ? ? 8B 82"
+                }
+            },
+            [&](const SignatureContainer& self)
+            {
+                ExecuteAttackHit_Detour = safetyhook::create_inline(self.get_match_address(), ExecuteAttackHit_Hook);
+				Output::send<LogLevel::Verbose>(STR("StriveSAMMI: found the execute_attack_hit happy\n"));
+                return true;
+            },
+            [](SignatureContainer& self)
+            {
+            },
+        };
+
+        const SignatureContainer pad_2_side{
+            {{"48 8B 15 ? ? ? ? 48 85 D2 74 ? 45 33 C9"}},
+            [&](const SignatureContainer& self)
+            {
+                Pad2Side.assign_address(self.get_match_address());
+				Output::send<LogLevel::Verbose>(STR("StriveSAMMI: p2 side found\n"));
+                return true;
+            },
+            [](SignatureContainer& self)
+            {
+            },
+        };
+
+        std::vector<SignatureContainer> signature_containers;
+        signature_containers.push_back(update_battle_sub);
+        signature_containers.push_back(round_initialize);
+        signature_containers.push_back(create_object_arg);
+        signature_containers.push_back(execute_attack_hit);
+        signature_containers.push_back(pad_2_side);
+
+        SinglePassScanner::SignatureContainerMap signature_containers_map;
+        signature_containers_map.emplace(ScanTarget::MainExe, signature_containers);
+
+        SinglePassScanner::start_scan(signature_containers_map);
+    }
+};
+
+#define GGST_SAMMI_API __declspec(dllexport)
+
+extern "C" {
+GGST_SAMMI_API RC::CppUserModBase* start_mod()
+{
+    return new GGSTSammi();
+}
+
+GGST_SAMMI_API void uninstall_mod(RC::CppUserModBase* mod)
+{
+    delete mod;
+}
+}
